@@ -10,7 +10,8 @@ namespace LegacyMUL
 		ArtLegacyMUL,
 		GumpartLegacyMUL,
 		MapLegacyMUL,
-		SoundLegacyMUL
+		SoundLegacyMUL,
+        MultiMUL
 	}
 
 	public class LegacyMULConverter
@@ -32,8 +33,10 @@ namespace LegacyMUL
 			public long m_Offset;
 			public int m_HeaderLength;
 			public int m_Size;
-			public ulong m_Identifier;
+            public int m_SizeDecompressed;
+            public ulong m_Identifier;
 			public uint m_Hash;
+            public short m_Compression;
 		}
 
 		//
@@ -62,7 +65,7 @@ namespace LegacyMUL
 		{
 			// Same for all UOP files
 			long firstTable = 0x200;
-			int tableSize = 0x3E8;
+            int tableSize = 100; //0x3E8; // block size (files per block)
 			
 			// Sanity, in case firstTable is customized by you!
 			if ( firstTable < 0x28 )
@@ -121,13 +124,20 @@ namespace LegacyMUL
 					}
 				}
 
+                int fileCount = idxEntries.Count;
+                if (type == FileType.MultiMUL)
+                {
+                    ++fileCount;  // for "housing.bin"
+                    idxEntries.Add(new IdxEntry());
+                }
+
 				// File header
 				writer.Write( 0x50594D ); // MYP
 				writer.Write( 5 ); // version
 				writer.Write( 0xFD23EC43 ); // format timestamp?
 				writer.Write( firstTable ); // first table
-				writer.Write( tableSize ); // table size
-				writer.Write( idxEntries.Count ); // file count
+				writer.Write( tableSize ); // table (block) size (= files per block)
+				writer.Write( fileCount ); // file count
 				writer.Write( 1 ); // modified count?
 				writer.Write( 1 ); // ?
 				writer.Write( 0 ); // ?
@@ -136,7 +146,7 @@ namespace LegacyMUL
 				for ( int i = 0x28; i < firstTable; ++i )
 					writer.Write( (byte)0 );
 
-				int tableCount = (int)Math.Ceiling( (double)idxEntries.Count / tableSize );
+				int tableCount = (int)Math.Ceiling( (double)fileCount / tableSize );
 				TableEntry[] tableEntries = new TableEntry[tableSize];
 
 				int maxId;
@@ -147,10 +157,10 @@ namespace LegacyMUL
 					long thisTable = writer.BaseStream.Position;
 
 					int idxStart = i * tableSize;
-					int idxEnd = Math.Min( ( i + 1 ) * tableSize, idxEntries.Count );
+					int idxEnd = Math.Min( ( i + 1 ) * tableSize, fileCount );
 
 					// Table header
-					writer.Write( tableSize );
+					writer.Write( idxEnd - idxStart );  // files in this block
 					writer.Write( (long)0 ); // next table, filled in later
 					writer.Seek( 34 * tableSize, SeekOrigin.Current ); // table entries, filled in later
 
@@ -159,8 +169,31 @@ namespace LegacyMUL
 
 					for ( int j = idxStart; j < idxEnd; ++j, ++tableIdx )
 					{
-						reader.BaseStream.Seek( idxEntries[j].m_Offset, SeekOrigin.Begin );
-						byte[] data = reader.ReadBytes( idxEntries[j].m_Size );
+                        // Special case: MultiCollection.uop
+                        if ((type == FileType.MultiMUL) && (i == tableCount - 1) && (j == idxEnd - 1))
+                        {
+                            if (File.Exists("housing.bin"))
+                            {
+                                FileInfo binInfo = new FileInfo("housing.bin");
+                                // MultiCollection.uop has the file "build/multicollection/housing.bin", which has to be treated separately
+                                using (BinaryReader readerBin = OpenInput("housing.bin"))
+                                {
+                                    byte[] binData = new byte[binInfo.Length];
+                                    int readLen = readerBin.Read(binData, 0, (int)binInfo.Length);
+
+                                    tableEntries[tableIdx].m_Offset = writer.BaseStream.Position;
+                                    tableEntries[tableIdx].m_Size = readLen;
+                                    tableEntries[tableIdx].m_Identifier = HashLittle2("build/multicollection/housing.bin");
+                                    tableEntries[tableIdx].m_Hash = HashAdler32(binData);
+
+                                    writer.Write(binData, 0, readLen);
+                                }
+                            }
+                            continue;
+                        }
+
+                        reader.BaseStream.Seek(idxEntries[j].m_Offset, SeekOrigin.Begin);
+                        byte[] data = reader.ReadBytes( idxEntries[j].m_Size );
 
 						tableEntries[tableIdx].m_Offset = writer.BaseStream.Position;
 						tableEntries[tableIdx].m_Size = data.Length;
@@ -168,7 +201,7 @@ namespace LegacyMUL
                         // hash 906142efe9fdb38a, which is file 0009834.tga (and no others, as 7.0.59.5) use a different name format (7 digits instead of 8);
                         //  if in newer versions more of these files will have adopted that format, someone should update this list of exceptions
                         //  (even if this seems so much like a typo from someone from the UO development team :P )
-                        if (idxEntries[j].m_Id == 9834)
+                        if ((type == FileType.GumpartLegacyMUL) && (idxEntries[j].m_Id == 9834))
                             tableEntries[tableIdx].m_Identifier = HashLittle2(String.Format(hashFormat[1], idxEntries[j].m_Id));
                         else
                             tableEntries[tableIdx].m_Identifier = HashLittle2( String.Format( hashFormat[0], idxEntries[j].m_Id ) );
@@ -189,7 +222,7 @@ namespace LegacyMUL
 						writer.Write( data );
 					}
 
-					long nextTable = writer.BaseStream.Position;
+                    long nextTable = writer.BaseStream.Position;
 
 					// Go back and fix table header
 					if ( i < tableCount - 1 )
@@ -223,6 +256,7 @@ namespace LegacyMUL
 
 					writer.BaseStream.Seek( nextTable, SeekOrigin.Begin );
 				}
+
 			}
 		}
 
@@ -283,10 +317,10 @@ namespace LegacyMUL
 						offsets[i].m_Offset = reader.ReadInt64();
 						offsets[i].m_HeaderLength = reader.ReadInt32(); // header length
 						offsets[i].m_Size = reader.ReadInt32(); // compressed size
-						reader.ReadInt32(); // decompressed size
+                        offsets[i].m_SizeDecompressed = reader.ReadInt32(); // decompressed size
 						offsets[i].m_Identifier = reader.ReadUInt64(); // filename hash (HashLittle2)
 						offsets[i].m_Hash = reader.ReadUInt32(); // data hash (Adler32)
-						reader.ReadInt16(); // compression method (0 = none, 1 = zlib)
+                        offsets[i].m_Compression = reader.ReadInt16(); // compression method (0 = none, 1 = zlib)
 					}
 
                     // Copy chunks
@@ -295,6 +329,31 @@ namespace LegacyMUL
 						if ( offsets[i].m_Offset == 0 )
 							continue; // skip empty entry
 
+                        if ((type == FileType.MultiMUL) && (offsets[i].m_Identifier == 0x126D1E99DDEDEE0A))
+                        {
+                            // MultiCollection.uop has the file "build/multicollection/housing.bin", which has to be treated separately
+                            using (BinaryWriter writerBin = OpenOutput("housing.bin"))
+                            {
+                                stream.Seek(offsets[i].m_Offset + offsets[i].m_HeaderLength, SeekOrigin.Begin);
+                                byte[] binData = reader.ReadBytes(offsets[i].m_Size);
+                                byte[] binDataToWrite;
+
+                                if (offsets[i].m_Compression == 1)
+                                {
+                                    byte[] binDataDecompressed = new byte[offsets[i].m_SizeDecompressed];
+                                    Zlib.Decompress(binDataDecompressed, ref offsets[i].m_SizeDecompressed, binData, offsets[i].m_Size);
+                                    binDataToWrite = binDataDecompressed;
+                                }
+                                else
+                                {
+                                    binDataToWrite = binData;
+                                }
+
+                                writerBin.Write(binDataToWrite, 0, binDataToWrite.Length);
+                            }
+                            continue;
+                        }
+                    
 						int chunkID = -1;
 						if ( !chunkIds.TryGetValue( offsets[i].m_Identifier, out chunkID ) )
                         {
@@ -309,9 +368,21 @@ namespace LegacyMUL
                         }
 
 						stream.Seek( offsets[i].m_Offset + offsets[i].m_HeaderLength, SeekOrigin.Begin );
-						byte[] chunkData = reader.ReadBytes( offsets[i].m_Size );
+						byte[] chunkDataRaw = reader.ReadBytes( offsets[i].m_Size );
 
-						if ( type == FileType.MapLegacyMUL )
+                        byte[] chunkData;
+                        if (offsets[i].m_Compression == 1)
+                        {
+                            byte[] chunkDataDecompressed = new byte[offsets[i].m_SizeDecompressed];
+                            Zlib.Decompress(chunkDataDecompressed, ref offsets[i].m_SizeDecompressed, chunkDataRaw, offsets[i].m_Size);
+                            chunkData = chunkDataDecompressed;
+                        }
+                        else
+                        {
+                            chunkData = chunkDataRaw;
+                        }
+
+                        if ( type == FileType.MapLegacyMUL )
 						{
 							// Write this chunk on the right position (no IDX file to point to it)
 							writer.Seek( chunkID * 0xC4000, SeekOrigin.Begin );
@@ -333,7 +404,7 @@ namespace LegacyMUL
 									int width = ( chunkData[0] | ( chunkData[1] << 8 ) | ( chunkData[2] << 16 ) | ( chunkData[3] << 24 ) );
 									int height = ( chunkData[4] | ( chunkData[5] << 8 ) | ( chunkData[6] << 16 ) | ( chunkData[7] << 24 ) );
 
-									writerIdx.Write( offsets[i].m_Size - 8 );
+									writerIdx.Write( chunkData.Length - 8 );
 									writerIdx.Write( ( width << 16 ) | height );
 									dataOffset = 8;
 									break;
@@ -341,13 +412,13 @@ namespace LegacyMUL
 								case FileType.SoundLegacyMUL:
 								{
 									// Extra contains the ID of this sound file + 1
-									writerIdx.Write( offsets[i].m_Size );
+									writerIdx.Write(chunkData.Length);
 									writerIdx.Write( chunkID + 1 );
 									break;
 								}
 								default:
 								{
-									writerIdx.Write( offsets[i].m_Size ); // Size
+									writerIdx.Write(chunkData.Length); // Size
 									writerIdx.Write( (int)0 ); // Extra
 									break;
 								}
@@ -428,7 +499,11 @@ namespace LegacyMUL
 					// MaxID = 0x1000 on 7.0.8.2
 					return new string[] { "build/soundlegacymul/{0:00000000}.dat", "" };
 				}
-				default:
+                case FileType.MultiMUL:
+                    {
+                        return new string[] { "build/multicollection/{0:000000}.bin", "" };
+                    }
+                default:
 				{
 					throw new ArgumentException( "Unknown file type!" );
 				}

@@ -55,6 +55,7 @@ namespace LegacyMULCL
 
 					Extract( "artLegacyMUL.uop", "art.mul", "artidx.mul", FileType.ArtLegacyMUL, 0 );
 					Extract( "gumpartLegacyMUL.uop", "gumpart.mul", "gumpidx.mul", FileType.GumpartLegacyMUL, 0 );
+                    Extract( "MultiCollection.uop", "multi.mul", "multiidx.mul", FileType.MultiMUL, 0 );
 					Extract( "soundLegacyMUL.uop", "sound.mul", "soundidx.mul", FileType.SoundLegacyMUL, 0 );
 
 					for ( int i = 0; i <= 5; ++i )
@@ -84,8 +85,16 @@ namespace LegacyMULCL
 					m_Success = m_Total = 0;
 
 					Pack( "art.mul", "artidx.mul", "artLegacyMUL.uop", FileType.ArtLegacyMUL, 0 );
-					Pack( "gumpart.mul", "gumpidx.mul", "gumpartLegacyMUL.uop", FileType.GumpartLegacyMUL, 0 );
-					Pack( "sound.mul", "soundidx.mul", "soundLegacyMUL.uop", FileType.SoundLegacyMUL, 0 );
+                    Pack( "gumpart.mul", "gumpidx.mul", "gumpartLegacyMUL.uop", FileType.GumpartLegacyMUL, 0 );
+
+                    if (!File.Exists("housing.bin"))
+                    {
+                        Console.WriteLine(" Warning: \"housing.bin\" not found, it won't be packed inside MultiCollection.uop (which probably won't work).");
+                        Console.WriteLine("  First, unpack a vanilla MultiCollection.uop to extract \"housing.bin\" in the working directory.");
+                    }
+                    Pack( "multi.mul", "multiidx.mul", "MultiCollection.uop", FileType.MultiMUL, 0 );
+                    
+                    Pack( "sound.mul", "soundidx.mul", "soundLegacyMUL.uop", FileType.SoundLegacyMUL, 0 );
 
 					for ( int i = 0; i <= 5; ++i )
 					{
