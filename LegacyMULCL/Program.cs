@@ -16,12 +16,10 @@ namespace LegacyMULCL
 
 		public static void Main( string[] args )
 		{
-			if ( args.Length == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "/?" )
+            Console.WriteLine("LegacyMULConverter version N-2.1.");
+            if ( args.Length == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "/?" )
 			{
-				Console.WriteLine();
-				Console.WriteLine( "LegacyMULCL Help" );
-				Console.WriteLine();
-				Console.WriteLine( "Syntax:" );
+                Console.WriteLine( "Syntax:" );
 				Console.WriteLine( "  -x <path>  Extracts known UOP files in <path> into MUL format." );
 				Console.WriteLine( "  <path>     Packs known MUL files in <path> into UOP format." );
 				Console.WriteLine();
@@ -34,6 +32,8 @@ namespace LegacyMULCL
 			{
 				case "-x":
 				{
+                    Console.WriteLine("Mode: Extract from UOP.");
+                    Console.WriteLine();
 					if ( args.Length < 2 )
 					{
 						Console.WriteLine( "Missing path name." );
@@ -71,8 +71,10 @@ namespace LegacyMULCL
 				}
 				default:
 				{
-					string mulDir = args[0];
+                    Console.WriteLine("Mode: Pack to UOP.");
+                    Console.WriteLine();
 
+					string mulDir = args[0];
 					if ( !Directory.Exists( mulDir ) )
 					{
 						Console.WriteLine( "Directory '{0}' does not exist!", mulDir );

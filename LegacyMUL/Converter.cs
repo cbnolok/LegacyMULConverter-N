@@ -331,7 +331,7 @@ namespace LegacyMUL
 
                         if ((type == FileType.MultiMUL) && (offsets[i].m_Identifier == 0x126D1E99DDEDEE0A))
                         {
-                            // MultiCollection.uop has the file "build/multicollection/housing.bin", which has to be treated separately
+                            // MultiCollection.uop has the file "build/multicollection/housing.bin", which has to be handled separately
                             using (BinaryWriter writerBin = OpenOutput("housing.bin"))
                             {
                                 stream.Seek(offsets[i].m_Offset + offsets[i].m_HeaderLength, SeekOrigin.Begin);
@@ -475,13 +475,13 @@ namespace LegacyMUL
 			 * MaxID is only used for constructing a lookup table.
 			 * Decrease to save some possibly unneeded computation.
 			 */
-			maxId = 0x10000;
+			maxId = 0x7FFFF;
 
 			switch ( type )
 			{
 				case FileType.ArtLegacyMUL:
 				{
-					maxId = 0x13FDC; // UOFiddler requires this exact index length to recognize UOHS art files
+					//maxId = 0x13FDC; // UOFiddler requires this exact index length to recognize UOHS art files
 					return new string[] { "build/artlegacymul/{0:00000000}.tga", "" };
 				}
 				case FileType.GumpartLegacyMUL:
