@@ -66,7 +66,8 @@ namespace LegacyMUL
 			// Same for all UOP files
 			long firstTable = 0x200;
             int tableSize = 100; //0x3E8; // block size (files per block)
-			
+            short compress = 0; // art, gumpart, map, etc are expected to be uncompressed, if we compress them they won't be loaded by the client...
+
 			// Sanity, in case firstTable is customized by you!
 			if ( firstTable < 0x28 )
 				throw new Exception( "At least 0x28 bytes are needed for the header." );
@@ -193,10 +194,47 @@ namespace LegacyMUL
                         }
 
                         reader.BaseStream.Seek(idxEntries[j].m_Offset, SeekOrigin.Begin);
-                        byte[] data = reader.ReadBytes( idxEntries[j].m_Size );
+                        byte[] data = reader.ReadBytes(idxEntries[j].m_Size);
+                        int sizeDecompressed = data.Length;
 
-						tableEntries[tableIdx].m_Offset = writer.BaseStream.Position;
-						tableEntries[tableIdx].m_Size = data.Length;
+                        if (type == FileType.GumpartLegacyMUL)
+                        {
+                            // Prepend width/height from IDX's extra
+                            sizeDecompressed += 8;
+                            int width = (idxEntries[j].m_Extra >> 16) & 0xFFFF;
+                            int height = idxEntries[j].m_Extra & 0xFFFF;
+
+                            byte[] dataCopy = data;
+                            data = new byte[sizeDecompressed];
+                            data[0] = (byte)( width & 0xFF);
+                            data[1] = (byte)((width >> 8)  & 0xFF);
+                            data[2] = (byte)((width >> 16) & 0xFF);
+                            data[3] = (byte)((width >> 24) & 0xFF);
+                            data[4] = (byte)( height & 0xFF);
+                            data[5] = (byte)((height >> 8)  & 0xFF);
+                            data[6] = (byte)((height >> 16) & 0xFF);
+                            data[7] = (byte)((height >> 24) & 0xFF);
+                            Array.Copy(dataCopy, 0, data, 8, sizeDecompressed - 8);
+                        }
+
+                        int sizeOut;
+                        byte[] dataOut;
+                        if (compress != 0)
+                        {
+                            sizeOut = Zlib.CompressBound((ulong)sizeDecompressed);  // estimated maximum size
+                            dataOut = new byte[sizeOut];
+                            Zlib.Compress(dataOut, ref sizeOut, data, sizeDecompressed);
+                        }
+                        else
+                        {
+                            sizeOut = sizeDecompressed;
+                            dataOut = data;
+                        }
+
+                        tableEntries[tableIdx].m_Offset = writer.BaseStream.Position;
+                        tableEntries[tableIdx].m_Compression = compress;
+						tableEntries[tableIdx].m_Size = sizeOut;
+                        tableEntries[tableIdx].m_SizeDecompressed = sizeDecompressed;
 
                         // hash 906142efe9fdb38a, which is file 0009834.tga (and no others, as 7.0.59.5) use a different name format (7 digits instead of 8);
                         //  if in newer versions more of these files will have adopted that format, someone should update this list of exceptions
@@ -205,21 +243,9 @@ namespace LegacyMUL
                             tableEntries[tableIdx].m_Identifier = HashLittle2(String.Format(hashFormat[1], idxEntries[j].m_Id));
                         else
                             tableEntries[tableIdx].m_Identifier = HashLittle2( String.Format( hashFormat[0], idxEntries[j].m_Id ) );
-						tableEntries[tableIdx].m_Hash = HashAdler32( data );
+						tableEntries[tableIdx].m_Hash = HashAdler32(dataOut);
 
-						if ( type == FileType.GumpartLegacyMUL )
-						{
-							// Prepend width/height from IDX's extra
-							int width = ( idxEntries[j].m_Extra >> 16 ) & 0xFFFF;
-							int height = idxEntries[j].m_Extra & 0xFFFF;
-
-							writer.Write( width );
-							writer.Write( height );
-
-							tableEntries[tableIdx].m_Size += 8;
-						}
-
-						writer.Write( data );
+						writer.Write(dataOut, 0, sizeOut);
 					}
 
                     long nextTable = writer.BaseStream.Position;
@@ -244,10 +270,10 @@ namespace LegacyMUL
 						writer.Write( tableEntries[tableIdx].m_Offset );
 						writer.Write( 0 ); // header length
 						writer.Write( tableEntries[tableIdx].m_Size ); // compressed size
-						writer.Write( tableEntries[tableIdx].m_Size ); // decompressed size
+						writer.Write( tableEntries[tableIdx].m_SizeDecompressed ); // decompressed size
 						writer.Write( tableEntries[tableIdx].m_Identifier );
 						writer.Write( tableEntries[tableIdx].m_Hash );
-						writer.Write( (short)0 ); // compression method, none
+						writer.Write( tableEntries[tableIdx].m_Compression ); // compression method
 					}
 
 					// Fill remainder with empty entries
@@ -394,7 +420,7 @@ namespace LegacyMUL
 
 							#region Idx
 							writerIdx.Seek( chunkID * 12, SeekOrigin.Begin );
-							writerIdx.Write( (int)writer.BaseStream.Position ); // Position
+							writerIdx.Write( (uint)writer.BaseStream.Position ); // Position
 
 							switch ( type )
 							{
@@ -481,7 +507,7 @@ namespace LegacyMUL
 			{
 				case FileType.ArtLegacyMUL:
 				{
-					//maxId = 0x13FDC; // UOFiddler requires this exact index length to recognize UOHS art files
+					maxId = 0x13FDC; // UOFiddler requires this exact idx length to recognize UOHS art files (it checks with == operator, not with >=)
 					return new string[] { "build/artlegacymul/{0:00000000}.tga", "" };
 				}
 				case FileType.GumpartLegacyMUL:

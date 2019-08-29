@@ -82,6 +82,25 @@ namespace LegacyMUL
         }
         #endregion
 
+        #region CompressBound
+        [DllImport("Zlib64", EntryPoint = "compressBound")]
+        private static extern int compressBound64(ulong sourceLen);
+
+        [DllImport("Zlib32", EntryPoint = "compressBound")]
+        private static extern int compressBound(ulong sourceLen);
+
+        /// <summary>
+        /// Estimate the size of buffer required to compress sourceLen bytes of data.
+        /// </summary>
+        public static int CompressBound(ulong sourceLen)
+        {
+            if (Environment.Is64BitProcess)
+                return compressBound64(sourceLen);
+
+            return compressBound(sourceLen);
+        }
+        #endregion
+
         #region Decompress
         [DllImport("Zlib64", EntryPoint = "uncompress")]
         private static extern ZLibError uncompress64(byte[] dest, ref int destLen, byte[] source, int sourceLen);

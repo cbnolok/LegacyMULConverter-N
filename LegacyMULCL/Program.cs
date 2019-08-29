@@ -16,7 +16,7 @@ namespace LegacyMULCL
 
 		public static void Main( string[] args )
 		{
-            Console.WriteLine("LegacyMULConverter version N-2.1.");
+            Console.WriteLine("LegacyMULConverter version N-2.2.");
             if ( args.Length == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "/?" )
 			{
                 Console.WriteLine( "Syntax:" );
@@ -89,11 +89,6 @@ namespace LegacyMULCL
 					Pack( "art.mul", "artidx.mul", "artLegacyMUL.uop", FileType.ArtLegacyMUL, 0 );
                     Pack( "gumpart.mul", "gumpidx.mul", "gumpartLegacyMUL.uop", FileType.GumpartLegacyMUL, 0 );
 
-                    if (!File.Exists("housing.bin"))
-                    {
-                        Console.WriteLine(" Warning: \"housing.bin\" not found, it won't be packed inside MultiCollection.uop (which probably won't work).");
-                        Console.WriteLine("  First, unpack a vanilla MultiCollection.uop to extract \"housing.bin\" in the working directory.");
-                    }
                     Pack( "multi.mul", "multiidx.mul", "MultiCollection.uop", FileType.MultiMUL, 0 );
                     
                     Pack( "sound.mul", "soundidx.mul", "soundLegacyMUL.uop", FileType.SoundLegacyMUL, 0 );
@@ -189,7 +184,14 @@ namespace LegacyMULCL
 				m_Converter.ToUOP( inFile, inIdx, outFile, type, typeIndex );
 
 				Console.WriteLine( "done." );
-				++m_Success;
+
+                if (type == FileType.MultiMUL && !File.Exists("housing.bin"))
+                {
+                    Console.WriteLine(" Warning: \"housing.bin\" not found, it won't be packed inside MultiCollection.uop (which probably won't work).");
+                    Console.WriteLine("  First, unpack a vanilla MultiCollection.uop to extract \"housing.bin\" in the working directory.");
+                }
+
+                ++m_Success;
 			}
 			catch ( Exception e )
 			{
